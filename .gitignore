@@ -1,0 +1,23 @@
+# Terraform Local State
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Terraform Variables (Secrets)
+*.tfvars
+*.tfvars.json
+
+# Terraform Lock
+.terraform.lock.hcl
+
+# Crash Logs
+crash.log
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
