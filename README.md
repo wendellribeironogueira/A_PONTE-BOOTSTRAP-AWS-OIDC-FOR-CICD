@@ -22,11 +22,11 @@ graph TD
             STS[AWS STS]
             
             subgraph Role_Construct [IAM Role: *-github-actions-role]
-                TP[Trust Policy<br/>(Condition: repo:user/repo:*)]
-                P_DevOps[Policy: *-devops-policy<br/>(Least Privilege)]
+                TP["Trust Policy<br/>(Condition: repo:user/repo:*)"]
+                P_DevOps["Policy: *-devops-policy<br/>(Least Privilege)"]
             end
             
-            PB[Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling')]
+            PB["Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling')"]
         end
 
         subgraph Infrastructure [Managed Resources]
