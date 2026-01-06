@@ -11,53 +11,55 @@
 
 ```mermaid
 flowchart TD
-    subgraph CI_CD ["GitHub Ecosystem"]
-        GHA[GitHub Actions Runner]
-        JWT_S[OIDC Token Service]
+    subgraph CI_CD ["GitHub Ecosystem (External)"]
+        GHA["GitHub Actions Runner<br/>(Terraform Client)"]
+        JWT_S["GitHub OIDC Service<br/>(Identity Provider)"]
     end
 
-    subgraph AWS ["AWS Account"]
-        subgraph Identity_Layer ["Identity & Access Management"]
-            OIDC_P[AWS OIDC Provider]
-            STS[AWS STS]
+    subgraph AWS ["AWS Account (Your Cloud)"]
+        subgraph Identity_Layer ["Identity & Access Management (Security Core)"]
+            OIDC_P["AWS OIDC Provider<br/>(Trust Anchor)"]
+            STS["AWS STS<br/>(Token Service)"]
             
             subgraph Role_Construct ["IAM Role: *-github-actions-role"]
-                TP["Trust Policy<br/>(Condition: repo:user/repo:*)"]
-                P_DevOps["Policy: *-devops-policy<br/>(Least Privilege)"]
+                TP["Trust Policy<br/>(The 'Lock': repo:user/repo:*)"]
+                P_DevOps["Policy: *-devops-policy<br/>(The 'Keys': Least Privilege)"]
             end
             
-            PB["Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling')"]
+            PB["Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling' / Guardrails)"]
         end
 
-        subgraph Infrastructure ["Managed Resources"]
-            TF_State[S3/DynamoDB State]
-            Compute[EC2 / ECR / VPC]
-            IAM_New[New IAM Roles]
+        subgraph Infrastructure ["Managed Resources (Target)"]
+            TF_State["Terraform State<br/>(S3 + DynamoDB)"]
+            Compute["App Resources<br/>(EC2, ECR, VPC)"]
+            IAM_New["New IAM Roles<br/>(Must inherit Boundary)"]
         end
     end
 
-    %% Flows
-    GHA -- "1. Request ID Token" --> JWT_S
-    JWT_S -- "2. Sign JWT (sub: repo:...)" --> GHA
-    GHA -- "3. AssumeRoleWithWebIdentity (JWT)" --> STS
-    STS -- "4. Verify Signature & Audience" --> OIDC_P
-    STS -- "5. Validate Trust Condition (StringLike)" --> TP
-    STS -- "6. Return Temp Credentials" --> GHA
+    %% Authentication Flow
+    GHA -- "1. Request Identity" --> JWT_S
+    JWT_S -- "2. Sign JWT<br/>(Claims: repo, ref)" --> GHA
+    GHA -- "3. Login Request<br/>(AssumeRoleWithWebIdentity)" --> STS
+    STS -- "4. Verify Signature" --> OIDC_P
+    STS -- "5. Enforce Trust Policy<br/>(Is it the correct Repo?)" --> TP
+    STS -- "6. Issue Temp Creds<br/>(Short-lived)" --> GHA
     
-    GHA -- "7. Terraform Apply" --> Infrastructure
+    GHA == "7. Terraform Plan/Apply<br/>(Authenticated)" ==> Infrastructure
     
-    %% Relationships & Security Controls
-    TP -.-> |Protects| Role_Construct
-    P_DevOps --> |Allows| Infrastructure
-    PB -.-> |"RESTRICTS (Max Permissions)"| Role_Construct
-    PB -.-> |"RESTRICTS (Inheritance)"| IAM_New
+    %% Security Controls
+    TP -.-> |"Protects (Entry Control)"| Role_Construct
+    P_DevOps --> |"Authorizes (Access Control)"| Infrastructure
+    PB -.-> |"LIMITS (Prevents Escalation)"| Role_Construct
+    PB -.-> |"FORCED INHERITANCE"| IAM_New
     
     %% Styling
-    classDef security fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
-    classDef component fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef security fill:#ffcccc,stroke:#ff0000,stroke-width:2px,color:black;
+    classDef component fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black;
+    classDef external fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:black;
     
     class PB,TP security;
-    class GHA,STS,OIDC_P component;
+    class GHA,STS,OIDC_P,JWT_S component;
+    class CI_CD external;
 ```
 
 A segurança desta ferramenta baseia-se no padrão **OpenID Connect (OIDC)** e em **Permissions Boundaries**, eliminando a necessidade de usuários IAM e mitigando riscos de escalação de privilégios.
