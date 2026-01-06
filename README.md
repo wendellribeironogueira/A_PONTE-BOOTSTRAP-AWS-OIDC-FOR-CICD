@@ -9,6 +9,57 @@
 
 ##  Arquitetura de Segurança (Cybersecurity Deep Dive)
 
+```mermaid
+graph TD
+    subgraph CI_CD [GitHub Ecosystem]
+        GHA[GitHub Actions Runner]
+        JWT_S[OIDC Token Service]
+    end
+
+    subgraph AWS [AWS Account]
+        subgraph Identity_Layer [Identity & Access Management]
+            OIDC_P[AWS OIDC Provider]
+            STS[AWS STS]
+            
+            subgraph Role_Construct [IAM Role: *-github-actions-role]
+                TP[Trust Policy<br/>(Condition: repo:user/repo:*)]
+                P_DevOps[Policy: *-devops-policy<br/>(Least Privilege)]
+            end
+            
+            PB[Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling')]
+        end
+
+        subgraph Infrastructure [Managed Resources]
+            TF_State[S3/DynamoDB State]
+            Compute[EC2 / ECR / VPC]
+            IAM_New[New IAM Roles]
+        end
+    end
+
+    %% Flows
+    GHA -- "1. Request ID Token" --> JWT_S
+    JWT_S -- "2. Sign JWT (sub: repo:...)" --> GHA
+    GHA -- "3. AssumeRoleWithWebIdentity (JWT)" --> STS
+    STS -- "4. Verify Signature & Audience" --> OIDC_P
+    STS -- "5. Validate Trust Condition (StringLike)" --> TP
+    STS -- "6. Return Temp Credentials" --> GHA
+    
+    GHA -- "7. Terraform Apply" --> Infrastructure
+    
+    %% Relationships & Security Controls
+    TP -.-> |Protects| Role_Construct
+    P_DevOps --> |Allows| Infrastructure
+    PB -.-> |RESTRICTS (Max Permissions)| Role_Construct
+    PB -.-> |RESTRICTS (Inheritance)| IAM_New
+    
+    %% Styling
+    classDef security fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
+    classDef component fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    
+    class PB,TP security;
+    class GHA,STS,OIDC_P component;
+```
+
 A segurança desta ferramenta baseia-se no padrão **OpenID Connect (OIDC)** e em **Permissions Boundaries**, eliminando a necessidade de usuários IAM e mitigando riscos de escalação de privilégios.
 
 ### 1. Federação de Identidade (Web Identity Federation)
