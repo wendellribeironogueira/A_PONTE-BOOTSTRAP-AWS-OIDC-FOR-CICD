@@ -11,46 +11,46 @@
 
 ```mermaid
 flowchart TD
-    subgraph CI_CD ["GitHub Ecosystem (External)"]
-        GHA["GitHub Actions Runner<br/>(Terraform Client)"]
-        JWT_S["GitHub OIDC Service<br/>(Identity Provider)"]
+    subgraph CI_CD ["Ecossistema GitHub (Externo)"]
+        GHA["GitHub Actions Runner<br/>(Cliente Terraform)"]
+        JWT_S["Serviço OIDC GitHub<br/>(Provedor de Identidade)"]
     end
 
-    subgraph AWS ["AWS Account (Your Cloud)"]
-        subgraph Identity_Layer ["Identity & Access Management (Security Core)"]
-            OIDC_P["AWS OIDC Provider<br/>(Trust Anchor)"]
-            STS["AWS STS<br/>(Token Service)"]
+    subgraph AWS ["Conta AWS (Sua Nuvem)"]
+        subgraph Identity_Layer ["IAM (Núcleo de Segurança)"]
+            OIDC_P["AWS OIDC Provider<br/>(Valida Assinatura do GitHub)"]
+            STS["AWS STS<br/>(Serviço de Tokens Temporários)"]
             
             subgraph Role_Construct ["IAM Role: *-github-actions-role"]
-                TP["Trust Policy<br/>(The 'Lock': repo:user/repo:*)"]
-                P_DevOps["Policy: *-devops-policy<br/>(The 'Keys': Least Privilege)"]
+                TP["Trust Policy<br/>(A 'Fechadura': Valida repo:usuario/repo)"]
+                P_DevOps["Policy: *-devops-policy<br/>(As 'Chaves': Permissões de IaC)"]
             end
             
-            PB["Permissions Boundary: *-infra-boundary<br/>(The 'Glass Ceiling' / Guardrails)"]
+            PB["Permissions Boundary: *-infra-boundary<br/>(O 'Teto de Vidro': Bloqueia Admin)"]
         end
 
-        subgraph Infrastructure ["Managed Resources (Target)"]
-            TF_State["Terraform State<br/>(S3 + DynamoDB)"]
-            Compute["App Resources<br/>(EC2, ECR, VPC)"]
-            IAM_New["New IAM Roles<br/>(Must inherit Boundary)"]
+        subgraph Infrastructure ["Recursos Gerenciados (Alvo)"]
+            TF_State["Estado do Terraform<br/>(S3 + DynamoDB)"]
+            Compute["Recursos da App<br/>(EC2, ECR, VPC)"]
+            IAM_New["Novas Roles IAM<br/>(Obrigatório herdar Boundary)"]
         end
     end
 
-    %% Authentication Flow
-    GHA -- "1. Request Identity" --> JWT_S
-    JWT_S -- "2. Sign JWT<br/>(Claims: repo, ref)" --> GHA
-    GHA -- "3. Login Request<br/>(AssumeRoleWithWebIdentity)" --> STS
-    STS -- "4. Verify Signature" --> OIDC_P
-    STS -- "5. Enforce Trust Policy<br/>(Is it the correct Repo?)" --> TP
-    STS -- "6. Issue Temp Creds<br/>(Short-lived)" --> GHA
+    %% Fluxo de Autenticação
+    GHA -- "1. Solicita Identidade" --> JWT_S
+    JWT_S -- "2. Assina JWT<br/>(Claims: repo, ref)" --> GHA
+    GHA -- "3. Login (AssumeRoleWithWebIdentity)" --> STS
+    STS -- "4. Consulta Chaves Públicas" --> OIDC_P
+    STS -- "5. Valida Condição (StringLike)" --> TP
+    STS -- "6. Retorna Credenciais Temp." --> GHA
     
-    GHA == "7. Terraform Plan/Apply<br/>(Authenticated)" ==> Infrastructure
+    GHA == "7. Terraform Plan/Apply" ==> Infrastructure
     
-    %% Security Controls
-    TP -.-> |"Protects (Entry Control)"| Role_Construct
-    P_DevOps --> |"Authorizes (Access Control)"| Infrastructure
-    PB -.-> |"LIMITS (Prevents Escalation)"| Role_Construct
-    PB -.-> |"FORCED INHERITANCE"| IAM_New
+    %% Controles de Segurança
+    TP -.-> |"Protege a Role"| Role_Construct
+    P_DevOps --> |"Autoriza Ações"| Infrastructure
+    PB -.-> |"LIMITA Permissões Máximas"| Role_Construct
+    PB -.-> |"IMPEDE Escalação de Privilégio"| IAM_New
     
     %% Styling
     classDef security fill:#ffcccc,stroke:#ff0000,stroke-width:2px,color:black;
