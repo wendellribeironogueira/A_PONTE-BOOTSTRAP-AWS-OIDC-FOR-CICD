@@ -1,68 +1,42 @@
-# 🌉 A PONTE (The Bridge) - AWS Bootstrap & OIDC Identity Broker
+# 🌉 A PONTE (The Bridge) - Foundation & Identity Engine
 
-> **Nível de Maturidade:** Production-Ready / Senior DevSecOps Tool
-> **Foco:** Segurança (Zero Long-Lived Credentials), Automação, Self-Healing e Compliance.
+> **Pilar:** Segurança & Governança (Identity Layer).
+> **Missão:** Resolver o paradoxo do "Ovo e a Galinha" na AWS com segurança Zero Trust.
 
-**A PONTE** é uma ferramenta de engenharia de infraestrutura projetada para resolver o **Bootstrap Paradox** (Ovo e Galinha) na AWS. Ela provisiona a camada de identidade federada necessária para que pipelines de CI/CD (GitHub Actions) possam gerenciar infraestrutura via Terraform sem armazenar credenciais estáticas (Access Keys) sensíveis.
+**A PONTE** é o motor de engenharia que provisiona a fundação de segurança necessária para operar na nuvem moderna. Ela elimina a necessidade de chaves de acesso de longa duração (`AWS_ACCESS_KEY_ID`) criando uma federação direta entre o GitHub e a AWS.
 
 ---
 
 ## 🎥 Demo
 https://github.com/user-attachments/assets/feda1c96-3d0d-4976-ab6c-d2d17cb425c0
 
-##  Arquitetura de Segurança (Cybersecurity Deep Dive)
+## 🏗️ Arquitetura de Bootstrap (Como Funciona)
 
 ```mermaid
-flowchart TD
-    subgraph CI_CD ["Ecossistema GitHub (Externo)"]
-        GHA["GitHub Actions Runner<br/>(Cliente Terraform)"]
-        JWT_S["Serviço OIDC GitHub<br/>(Provedor de Identidade)"]
+graph LR
+    subgraph Local ["💻 Máquina do Engenheiro (Local)"]
+        Script["🐍 the_bridge.py<br/>(Orquestrador & Sanitizer)"]
+        TF_Local["Terraform CLI<br/>(State Efêmero)"]
     end
 
-    subgraph AWS ["Conta AWS (Sua Nuvem)"]
-        subgraph Identity_Layer ["IAM (Núcleo de Segurança)"]
-            OIDC_P["AWS OIDC Provider<br/>(Valida Assinatura do GitHub)"]
-            STS["AWS STS<br/>(Serviço de Tokens Temporários)"]
-            
-            subgraph Role_Construct ["IAM Role: *-github-actions-role"]
-                TP["Trust Policy<br/>(A 'Fechadura': Valida repo:usuario/repo)"]
-                P_DevOps["Policy: *-devops-policy<br/>(As 'Chaves': Permissões de IaC)"]
-            end
-            
-            PB["Permissions Boundary: *-infra-boundary<br/>(O 'Teto de Vidro': Bloqueia Admin)"]
+    subgraph AWS ["☁️ AWS Account (Foundation)"]
+        subgraph Identity ["🔐 Identity Layer"]
+            OIDC["OIDC Provider<br/>(Trust Anchor)"]
+            Role["IAM Role<br/>(CI/CD Agent)"]
+            Boundary["Permissions Boundary<br/>(Security Guardrail)"]
         end
 
-        subgraph Infrastructure ["Recursos Gerenciados (Alvo)"]
-            TF_State["Estado do Terraform<br/>(S3 + DynamoDB)"]
-            Compute["Recursos da App<br/>(EC2, ECR, VPC)"]
-            IAM_New["Novas Roles IAM<br/>(Obrigatório herdar Boundary)"]
+        subgraph State ["📦 State Layer"]
+            S3["S3 Bucket<br/>(tfstate)"]
+            Lock["DynamoDB<br/>(Locking)"]
         end
     end
 
-    %% Fluxo de Autenticação
-    GHA -- "1. Solicita Identidade" --> JWT_S
-    JWT_S -- "2. Assina JWT<br/>(Claims: repo, ref)" --> GHA
-    GHA -- "3. Login (AssumeRoleWithWebIdentity)" --> STS
-    STS -- "4. Consulta Chaves Públicas" --> OIDC_P
-    STS -- "5. Valida Condição (StringLike)" --> TP
-    STS -- "6. Retorna Credenciais Temp." --> GHA
+    Script -->|1. Valida & Sanitiza| TF_Local
+    TF_Local -->|2. Provisiona| Identity
+    TF_Local -->|3. Provisiona| State
     
-    GHA == "7. Terraform Plan/Apply" ==> Infrastructure
-    
-    %% Controles de Segurança
-    TP -.-> |"Protege a Role"| Role_Construct
-    P_DevOps --> |"Autoriza Ações"| Infrastructure
-    PB -.-> |"LIMITA Permissões Máximas"| Role_Construct
-    PB -.-> |"IMPEDE Escalação de Privilégio"| IAM_New
-    
-    %% Styling
-    classDef security fill:#ffcccc,stroke:#ff0000,stroke-width:2px,color:black;
-    classDef component fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black;
-    classDef external fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:black;
-    
-    class PB,TP security;
-    class GHA,STS,OIDC_P,JWT_S component;
-    class CI_CD external;
+    Role -.->|Restrita por| Boundary
 ```
 
 A segurança desta ferramenta baseia-se no padrão **OpenID Connect (OIDC)** e em **Permissions Boundaries**, eliminando a necessidade de usuários IAM e mitigando riscos de escalação de privilégios.
@@ -162,6 +136,24 @@ Crie uma **New repository variable**:
 *   **Nome:** `PERMISSIONS_BOUNDARY_ARN`
 *   **Valor:** O ARN da Boundary exibido pelo script (ex: `arn:aws:iam::123456789012:policy/prod-infra-boundary`).
     *   *Nota: Isso é obrigatório para que o Terraform possa criar novas Roles (ex: EC2) em conformidade com as regras de segurança.*
+
+---
+
+## 🧹 Disaster Recovery & Cleanup (AWS Nuke)
+
+Este projeto inclui um módulo de **Limpeza Automatizada** (`nuke-aws/`) para ambientes de desenvolvimento. Ele permite resetar a conta AWS para um estado limpo, removendo recursos criados por testes (EC2, VPC, ECR) mas **preservando a fundação crítica**.
+
+### O que é protegido (Safe Guard):
+*   ✅ OIDC Provider & IAM Roles do GitHub.
+*   ✅ Bucket S3 do Terraform State.
+*   ✅ Tabela DynamoDB de Lock.
+*   ✅ O próprio usuário Admin que executa a limpeza.
+
+### Como executar a limpeza:
+```powershell
+cd nuke-aws
+.\nuke-cleanup.ps1
+```
 
 ---
 
