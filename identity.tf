@@ -72,7 +72,8 @@ resource "aws_iam_policy" "boundary" {
         Effect   = "Deny"
         Action   = [
           "iam:CreateUser", "iam:DeleteUser", "iam:UpdateUser", "iam:CreateLoginProfile",
-          "iam:AttachUserPolicy", "iam:PutUserPolicy", "iam:CreateGroup"
+          "iam:AttachUserPolicy", "iam:PutUserPolicy", "iam:CreateGroup",
+          "iam:DeleteRolePermissionsBoundary", "iam:PutRolePermissionsBoundary"
         ]
         Resource = "*"
       },
@@ -90,6 +91,13 @@ resource "aws_iam_policy" "boundary" {
           "arn:aws:iam::*:policy/*-devops-policy",
           "arn:aws:iam::*:role/*-github-actions-role"
         ]
+      },
+      # 3. ISOLAMENTO: Impede Movimentação Lateral (PassRole) para roles fora do projeto
+      {
+        Sid         = "DenyPassRoleToExternal"
+        Effect      = "Deny"
+        Action      = "iam:PassRole"
+        NotResource = "arn:aws:iam::*:role/${lower(var.project_name)}-*"
       }
     ]
   })
@@ -105,6 +113,19 @@ resource "aws_iam_policy" "devops_policy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # 0. SELF-PROTECTION: Impede que o GitHub Actions edite suas próprias regras para virar Admin
+      {
+        Sid      = "DenySelfTampering"
+        Effect   = "Deny"
+        Action   = [
+          "iam:DeletePolicy", "iam:DeletePolicyVersion",
+          "iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion"
+        ]
+        Resource = [
+          "arn:aws:iam::*:policy/*-infra-boundary",
+          "arn:aws:iam::*:policy/*-devops-policy"
+        ]
+      },
       # S3 e DynamoDB (Backend Terraform)
       {
         Sid    = "TerraformBackendAccess"
@@ -148,7 +169,7 @@ resource "aws_iam_policy" "devops_policy" {
         Action = [
           "iam:CreateRole", "iam:PutRolePermissionsBoundary"
         ]
-        Resource = "arn:aws:iam::*:role/*"
+        Resource = "arn:aws:iam::*:role/${lower(var.project_name)}-*"
         # AQUI ESTÁ A SEGURANÇA: Só permite criar role SE anexar a boundary
         Condition = {
           StringEquals = {
@@ -156,21 +177,23 @@ resource "aws_iam_policy" "devops_policy" {
           }
         }
       },
-      # Gerenciamento de IAM - Outras Operações
+      # Gerenciamento de IAM - Outras Operações (Restrito ao Escopo do Projeto)
+      # EVITA ARMADILHA: Impede que o pipeline altere roles/policies de outros projetos ou faça PassRole de Admins
       {
         Sid    = "IAMManagement"
         Effect = "Allow"
         Action = [
           "iam:DeleteRole", "iam:TagRole", "iam:UntagRole", "iam:UpdateRole",
-          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:AddRoleToInstanceProfile", 
+          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", 
+          "iam:AddRoleToInstanceProfile", 
           "iam:RemoveRoleFromInstanceProfile", "iam:TagInstanceProfile", "iam:UntagInstanceProfile",
           "iam:CreatePolicy", "iam:DeletePolicy", "iam:CreatePolicyVersion", "iam:DeletePolicyVersion",
           "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PassRole"
         ]
         Resource = [
-          "arn:aws:iam::*:role/*",
-          "arn:aws:iam::*:instance-profile/*",
-          "arn:aws:iam::*:policy/*"
+          "arn:aws:iam::*:role/${lower(var.project_name)}-*",
+          "arn:aws:iam::*:instance-profile/${lower(var.project_name)}-*",
+          "arn:aws:iam::*:policy/${lower(var.project_name)}-*"
         ]
       },
       # Gerenciamento de ECR
