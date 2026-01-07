@@ -99,6 +99,7 @@ Para mitigar o risco de **Privilege Escalation**, todas as Roles criadas por est
 *   **Bloqueio de IAM:** Impede a criação de usuários IAM, Login Profiles ou Access Keys (evita Backdoors).
 *   **Self-Protection:** Impede que a Role delete ou modifique a própria Boundary ou as Policies de segurança do Bootstrap.
 *   **Compliance Forçado:** O Terraform só consegue criar novas Roles (ex: para EC2) se anexar esta Boundary a elas. Caso contrário, a AWS nega a criação (`AccessDenied`).
+*   **Anti-Boundary Escape:** Nega explicitamente `iam:DeleteRolePermissionsBoundary`. Mesmo que uma role tenha permissões administrativas dentro do escopo, ela é tecnicamente incapaz de remover sua própria restrição ("Teto de Vidro").
 
 ### 4. IAM Policy (O "Escopo de Acesso")
 A política operacional (`*-devops-policy`) segue o princípio de **Privilégio Mínimo Viável para IaC**.
@@ -108,6 +109,7 @@ A política operacional (`*-devops-policy`) segue o princípio de **Privilégio 
 | **Terraform Backend** | `s3`, `dynamodb` | Restrito aos recursos de estado (`*-tfstate-bucket`, `*-tf-lock-table`). |
 | **Compute & Network** | `ec2:*`, `ecr:*` | Provisionamento de infraestrutura. |
 | **IAM Management** | `iam:CreateRole`, etc. | Permitido apenas se a **Permissions Boundary** for anexada. |
+| **Identity Sandbox** | `iam:PassRole` | **Anti-Lateral Movement:** Utiliza lógica de `NotResource` para bloquear `PassRole` em qualquer role que não inicie com o nome do projeto. Impede o sequestro de roles administrativas da conta. |
 
 ---
 
@@ -171,6 +173,7 @@ Crie uma **New repository variable**:
 | **Command Injection** | Alta | **Input Sanitization:** Regex estrito no script Python. |
 | **Lockout (Delete Acidental)** | Alta | **Lifecycle Prevent Destroy:** Terraform impede destruição de recursos de identidade. |
 | **Confused Deputy** | Média | **Trust Policy Condition:** Validação estrita do `sub` (Repo) do GitHub. |
+| **Lateral Movement** | Crítica | **Resource Sandbox:** Bloqueio de `PassRole` para roles externas ao projeto via `NotResource`. |
 
 ---
 *Developed for High-Performance DevSecOps Environments.*
