@@ -7,6 +7,10 @@
 
 ---
 
+https://github.com/user-attachments/assets/feda1c96-3d0d-4976-ab6c-d2d17cb425c0
+
+
+
 ##  Arquitetura de Segurança (Cybersecurity Deep Dive)
 
 ```mermaid
